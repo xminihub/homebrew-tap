@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # The bump workflow it calls commits Formula changes.
+  contents: write
   issues: write
 
 jobs:
