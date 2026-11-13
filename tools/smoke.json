@@ -1,0 +1,10 @@
+{
+  "name": "smoke",
+  "class": "Smoke",
+  "repo": "xminihub/homebrew-tap",
+  "bin": "smoke",
+  "desc": "Smoke-test tool for the bump path",
+  "homepage": "https://github.com/xminihub/homebrew-tap",
+  "license": "MIT",
+  "targets": ["darwin-arm64", "darwin-x64", "linux-x64", "linux-aarch64"]
+}
