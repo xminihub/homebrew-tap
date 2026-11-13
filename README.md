@@ -35,8 +35,8 @@ that workflow:
    targets,
 2. downloads each published release asset and checksums it,
 3. renders `Formula/<name>.rb` from `templates/<name>.rb.tpl`,
-4. verifies it with `brew style`, `brew fetch` and `brew audit --strict
-   --online`,
+4. verifies it with `brew style`, `brew fetch --all-platforms` and
+   `brew audit --strict --online`,
 5. commits `Formula/<name>.rb` to `main`, rebasing over any formula that was
    pushed in the meantime.
 
