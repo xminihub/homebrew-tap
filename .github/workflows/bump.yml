@@ -95,7 +95,10 @@ jobs:
           set -euo pipefail
           brew style --fix "Formula/$NAME.rb"
           brew style "Formula/$NAME.rb"
-          brew fetch --formula "xminihub/tap/$NAME"
+          # --all-platforms fetches every block's URL once, so a wrong
+          # checksum or a missing asset for a target this runner cannot run
+          # still fails the bump.
+          brew fetch --formula --all-platforms --retry "xminihub/tap/$NAME"
           brew audit --formula --strict --online "xminihub/tap/$NAME"
 
       - name: Commit the formula
