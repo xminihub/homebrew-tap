@@ -65,16 +65,21 @@ jobs:
           }
           repo="$(jq -r '.repo' "tools/$NAME.json")"
           bin="$(jq -r '.bin' "tools/$NAME.json")"
+          gh release view "v$VERSION" --repo "$repo" >/dev/null || {
+            echo "::error::$repo has no release v$VERSION to bump $NAME from"
+            exit 1
+          }
           map="{}"
           for target in $(jq -r '.targets[]' "tools/$NAME.json"); do
             asset="$bin-$VERSION-$target.tar.gz"
-            gh release download "v$VERSION" --repo "$repo" --pattern "$asset" \
-              --clobber --dir dist
-            test -s "dist/$asset" || {
-              echo "::error::$repo has no $asset for v$VERSION"
+            if ! gh release download "v$VERSION" --repo "$repo" \
+                --pattern "$asset" --clobber --dir dist; then
+              echo "::error::$repo v$VERSION publishes no $asset asset"
+              echo "::error::expected the release asset contract" \
+                "<bin>-<version>-<target>.tar.gz for target $target"
               exit 1
-            }
-            sha="$(sha256sum "dist/$asset" | cut -d' ' -f1)"
+            fi
+            sha="$(shasum -a 256 "dist/$asset" | cut -d' ' -f1)"
             map="$(jq -cn --argjson m "$map" --arg t "$target" --arg s "$sha" \
               '$m + {($t): $s}')"
           done
