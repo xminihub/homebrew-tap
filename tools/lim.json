@@ -6,5 +6,5 @@
   "desc": "TUI for dsh and others",
   "homepage": "https://github.com/xminihub/limulin",
   "license": "MIT",
-  "targets": ["darwin-arm64", "darwin-x64", "linux-x64", "linux-aarch64"]
+  "brewTargets": ["darwin-arm64", "darwin-x64", "linux-x64", "linux-aarch64"]
 }

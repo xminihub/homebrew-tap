@@ -1,0 +1,16 @@
+name: Set up the tap for Homebrew
+description: >
+  Make this repository visible to Homebrew as xminihub/tap. Homebrew loads
+  formulae only from its own tap directory, refuses untrusted taps, and refuses
+  path arguments to `brew audit`, so every gate needs this setup.
+runs:
+  using: composite
+  steps:
+    - name: Tap and trust this checkout
+      shell: bash
+      run: |
+        set -euo pipefail
+        taps="$(brew --repository)/Library/Taps/xminihub"
+        mkdir -p "$taps"
+        ln -sfn "${{ github.workspace }}" "$taps/homebrew-tap"
+        brew trust --tap xminihub/tap

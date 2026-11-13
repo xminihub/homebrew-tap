@@ -1,32 +1,58 @@
 #!/usr/bin/env node
-// Render one formula from its tool config, the release checksums and a template.
+// The single source of a tool's asset names and generated formula.
 //
-// usage: node scripts/render.mjs <name> <version> <assets.json> <out>
+// usage:
+//   node scripts/render.mjs assets <name> <version>
+//       -> {"darwin-arm64": "<bin>-<version>-darwin-arm64.tar.gz", ...}
+//   node scripts/render.mjs formula <name> <version> <checksums.json> <out>
 //
-// assets.json maps a brew target to the sha256 of the published asset. Target
-// names are derived here and only here: they are the contract between a
-// product's release assets and the URL blocks this formula pins.
+// The release workflow of a product asks for `assets` and uploads exactly
+// those names; the bump workflow downloads them, checksums them and hands the
+// map back for `formula`. Target names therefore exist in one file only.
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-const [name, version, assetsPath, outPath] = process.argv.slice(2);
-if (!name || !version || !assetsPath || !outPath) {
+const [command, name, version, third, fourth] = process.argv.slice(2);
+if (!command || !name || !version) {
   console.error(
-    "usage: node scripts/render.mjs <name> <version> <assets.json> <out>",
+    "usage: node scripts/render.mjs assets <name> <version>\n" +
+      "       node scripts/render.mjs formula <name> <version> <checksums.json> <out>",
   );
   process.exit(1);
 }
 
 const tool = JSON.parse(readFileSync(`tools/${name}.json`, "utf8"));
-const checksums = JSON.parse(readFileSync(assetsPath, "utf8"));
-
 const assetName = (target) => `${tool.bin}-${version}-${target}.tar.gz`;
+
+if (command === "assets") {
+  const map = {};
+  for (const target of tool.brewTargets) {
+    map[target] = assetName(target);
+  }
+  console.log(JSON.stringify(map));
+} else {
+  if (command !== "formula") {
+    console.error(`unknown command: ${command}`);
+    process.exit(1);
+  }
+  formulaCommand();
+}
+
+function formulaCommand() {
+if (!third || !fourth) {
+  console.error(
+    "usage: node scripts/render.mjs formula <name> <version> <checksums.json> <out>",
+  );
+  process.exit(1);
+}
+
+const checksums = JSON.parse(readFileSync(third, "utf8"));
 const urlFor = (target) =>
   `https://github.com/${tool.repo}/releases/download/v${version}/${assetName(target)}`;
 const shaFor = (target) => {
   const sha = checksums[target];
   if (!/^[0-9a-f]{64}$/.test(sha ?? "")) {
-    throw new Error(`no sha256 for target ${target}`);
+    throw new Error(`no sha256 for brew target ${target}`);
   }
   return sha;
 };
@@ -41,8 +67,8 @@ const GROUPS = [
 ];
 
 const blocks = GROUPS.map((group) => {
-  const arm = tool.targets.includes(group.arm) ? group.arm : null;
-  const x86 = tool.targets.includes(group.x86) ? group.x86 : null;
+  const arm = tool.brewTargets.includes(group.arm) ? group.arm : null;
+  const x86 = tool.brewTargets.includes(group.x86) ? group.x86 : null;
   if (!arm && !x86) return null;
 
   const inner = [];
@@ -67,12 +93,10 @@ const formula = readFileSync(`templates/${name}.rb.tpl`, "utf8")
   .replaceAll("{{CLASS}}", tool.class)
   .replaceAll("{{DESC}}", tool.desc)
   .replaceAll("{{HOMEPAGE}}", tool.homepage)
-  .replaceAll("{{REPO}}", tool.repo)
   .replaceAll("{{LICENSE}}", tool.license)
   .replaceAll("{{BIN}}", tool.bin)
-  .replaceAll("{{VERSION}}", version)
-  .replaceAll("{{LIVECHECK_REGEX}}", tool.livecheckRegex)
   .replaceAll("{{BLOCKS}}", blocks);
 
-writeFileSync(outPath, formula);
-console.log(`rendered ${outPath} for ${name} ${version}`);
+writeFileSync(fourth, formula);
+console.log(`rendered ${fourth} for ${name} ${version}`);
+}

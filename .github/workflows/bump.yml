@@ -40,22 +40,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up tap for Homebrew
-        run: |
-          set -euo pipefail
-          taps="$(brew --repository)/Library/Taps/xminihub"
-          mkdir -p "$taps"
-          ln -sfn "$GITHUB_WORKSPACE" "$taps/homebrew-tap"
-          brew trust --tap xminihub/tap
+      - uses: ./.github/actions/setup-tap
 
       - name: Checksum the published release assets
         env:
           NAME: ${{ inputs.name }}
           VERSION: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
-        # The release asset names come from tools/<name>.json, so a product
-        # that stops publishing one of them fails here instead of pinning a
-        # URL that 404s for those users.
+        # Asset names come from scripts/render.mjs, the only place they are
+        # derived: a product that stops publishing one of them fails here
+        # instead of pinning a URL that 404s for those users.
         run: |
           set -euo pipefail
           test -f "tools/$NAME.json" || {
@@ -63,25 +57,24 @@ jobs:
             exit 1
           }
           repo="$(jq -r '.repo' "tools/$NAME.json")"
-          bin="$(jq -r '.bin' "tools/$NAME.json")"
-          gh release view "v$VERSION" --repo "$repo" >/dev/null || {
+          if ! gh release view "v$VERSION" --repo "$repo" >/dev/null; then
             echo "::error::$repo has no release v$VERSION to bump $NAME from"
             exit 1
-          }
+          fi
+          node scripts/render.mjs assets "$NAME" "$VERSION" > assets-map.json
           map="{}"
-          for target in $(jq -r '.targets[]' "tools/$NAME.json"); do
-            asset="$bin-$VERSION-$target.tar.gz"
+          while IFS=$'\t' read -r target asset; do
             if ! gh release download "v$VERSION" --repo "$repo" \
                 --pattern "$asset" --clobber --dir dist; then
               echo "::error::$repo v$VERSION publishes no $asset asset"
-              echo "::error::expected the release asset contract" \
-                "<bin>-<version>-<target>.tar.gz for target $target"
+              echo "::error::$NAME must publish " \
+                "<bin>-<version>-<brew target>.tar.gz for every brew target"
               exit 1
             fi
             sha="$(shasum -a 256 "dist/$asset" | cut -d' ' -f1)"
             map="$(jq -cn --argjson m "$map" --arg t "$target" --arg s "$sha" \
               '$m + {($t): $s}')"
-          done
+          done < <(jq -r 'to_entries[] | [.key, .value] | @tsv' assets-map.json)
           printf '%s\n' "$map" > assets.json
           jq -r 'to_entries[] | "\(.key): \(.value)"' assets.json
 
@@ -92,7 +85,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p Formula
-          node scripts/render.mjs "$NAME" "$VERSION" assets.json "Formula/$NAME.rb"
+          node scripts/render.mjs formula "$NAME" "$VERSION" assets.json \
+            "Formula/$NAME.rb"
 
       - name: Verify formula
         env:

@@ -26,23 +26,22 @@ jobs:
         run: |
           set -euo pipefail
           tools="[]"
-          for config in tools/*.json; do
-            name="$(jq -r '.name' "$config")"
-            repo="$(jq -r '.repo' "$config")"
-            latest="$(gh release view --repo "$repo" --json tagName \
-              --jq '.tagName | sub("^v"; "")')" || {
+          while IFS=$'\t' read -r name repo; do
+            if ! latest="$(gh release view --repo "$repo" --json tagName \
+              --jq '.tagName | sub("^v"; "")')"; then
               echo "$name: $repo has no release to compare against"
               continue
-            }
-            pinned="$(sed -n 's#.*/releases/download/v\([^/]*\)/.*#\1#p' \
-              "Formula/$name.rb" 2>/dev/null | head -1 || true)"
+            fi
+            pinned="$(scripts/pinned-version.sh "$name")"
             echo "$name: upstream=$latest pinned=${pinned:-none}"
             if [ "$latest" = "$pinned" ]; then
               continue
             fi
             tools="$(jq -cn --argjson t "$tools" --arg n "$name" --arg v "$latest" \
               '$t + [{name: $n, version: $v}]')"
-          done
+          done < <(for config in tools/*.json; do
+            jq -r '[.name, .repo] | @tsv' "$config"
+          done)
           echo "tools=$(printf '%s' "$tools" | jq -c .)" >> "$GITHUB_OUTPUT"
 
   bump:
@@ -61,8 +60,8 @@ jobs:
   report:
     name: Report formulae still behind upstream
     needs: [plan, bump]
-    # Runs even when a bump failed: a failed bump is exactly the case that has
-    # to leave a trace other than a red scheduled run.
+    # Runs even when a bump failed: that is exactly the case that has to leave
+    # a trace other than a red scheduled run.
     if: always() && needs.plan.outputs.tools != '[]'
     runs-on: ubuntu-latest
     steps:
@@ -74,18 +73,21 @@ jobs:
           TOOLS: ${{ needs.plan.outputs.tools }}
         run: |
           set -euo pipefail
-          for entry in $(printf '%s' "$TOOLS" | jq -c '.[]'); do
+          while IFS= read -r entry; do
             name="$(printf '%s' "$entry" | jq -r '.name')"
             version="$(printf '%s' "$entry" | jq -r '.version')"
             repo="$(jq -r '.repo' "tools/$name.json")"
-            pinned="$(sed -n 's#.*/releases/download/v\([^/]*\)/.*#\1#p' \
-              "Formula/$name.rb" 2>/dev/null | head -1 || true)"
+            pinned="$(scripts/pinned-version.sh "$name")"
             if [ "$pinned" = "$version" ]; then
               echo "$name converged on $version"
               continue
             fi
             title="$name formula is stuck behind $version"
-            body="The backfill dispatched a bump of \`$name\` to \`$version\` (latest release of \`$repo\`) and \`Formula/$name.rb\` still pins \`${pinned:-nothing}\`. The bump run failed or its gates rejected the assets — check the bump workflow run for \`$name\` and re-run it once the release assets exist."
+            body="The backfill dispatched a bump of \`$name\` to \`$version\`
+            (latest release of \`$repo\`) and \`Formula/$name.rb\` still pins
+            \`${pinned:-nothing}\`. The bump run failed or its gates rejected the
+            release assets — re-run \`bump.yml\` with \`name=$name\` and
+            \`version=$version\` once \`$repo\` publishes them."
             existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
               --label stale-formula --search "$name formula is stuck in:title" \
               --json number --jq '.[0].number // empty')"
@@ -95,4 +97,4 @@ jobs:
               gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
                 --body "$body" --label stale-formula
             fi
-          done
+          done < <(printf '%s\n' "$TOOLS" | jq -c '.[]')

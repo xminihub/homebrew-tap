@@ -8,14 +8,14 @@ on:
       - "templates/**"
       - "tools/**"
       - "scripts/**"
-      - ".github/workflows/audit.yml"
+      - ".github/**"
   pull_request:
     paths:
       - "Formula/**"
       - "templates/**"
       - "tools/**"
       - "scripts/**"
-      - ".github/workflows/audit.yml"
+      - ".github/**"
   workflow_dispatch:
 
 permissions:
@@ -33,13 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up tap for Homebrew
-        run: |
-          set -euo pipefail
-          taps="$(brew --repository)/Library/Taps/xminihub"
-          mkdir -p "$taps"
-          ln -sfn "$GITHUB_WORKSPACE" "$taps/homebrew-tap"
-          brew trust --tap xminihub/tap
+      - uses: ./.github/actions/setup-tap
 
       - name: Audit formulae
         run: |
