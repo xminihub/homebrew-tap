@@ -1,0 +1,132 @@
+name: Bump formula
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Tool name (a tools/<name>.json entry)"
+        required: true
+        type: string
+        default: lim
+      version:
+        description: "Upstream release version, without the v tag prefix"
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      name:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: bump-${{ inputs.name }}
+  cancel-in-progress: false
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  HOMEBREW_NO_ANALYTICS: "1"
+
+jobs:
+  bump:
+    name: Bump ${{ inputs.name }} to ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up tap for Homebrew
+        run: |
+          set -euo pipefail
+          taps="$(brew --repository)/Library/Taps/xminihub"
+          mkdir -p "$taps"
+          ln -sfn "$GITHUB_WORKSPACE" "$taps/homebrew-tap"
+          brew trust --tap xminihub/tap
+
+      - name: Checksum the published release assets
+        env:
+          NAME: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        # The release asset names come from tools/<name>.json, so a product
+        # that stops publishing one of them fails here instead of pinning a
+        # URL that 404s for those users.
+        run: |
+          set -euo pipefail
+          test -f "tools/$NAME.json" || {
+            echo "::error::no tools/$NAME.json in this tap"
+            exit 1
+          }
+          repo="$(jq -r '.repo' "tools/$NAME.json")"
+          bin="$(jq -r '.bin' "tools/$NAME.json")"
+          map="{}"
+          for target in $(jq -r '.targets[]' "tools/$NAME.json"); do
+            asset="$bin-$VERSION-$target.tar.gz"
+            gh release download "v$VERSION" --repo "$repo" --pattern "$asset" \
+              --clobber --dir dist
+            test -s "dist/$asset" || {
+              echo "::error::$repo has no $asset for v$VERSION"
+              exit 1
+            }
+            sha="$(sha256sum "dist/$asset" | cut -d' ' -f1)"
+            map="$(jq -cn --argjson m "$map" --arg t "$target" --arg s "$sha" \
+              '$m + {($t): $s}')"
+          done
+          printf '%s\n' "$map" > assets.json
+          jq -r 'to_entries[] | "\(.key): \(.value)"' assets.json
+
+      - name: Render formula
+        env:
+          NAME: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p Formula
+          node scripts/render.mjs "$NAME" "$VERSION" assets.json "Formula/$NAME.rb"
+
+      - name: Verify formula
+        env:
+          NAME: ${{ inputs.name }}
+        run: |
+          set -euo pipefail
+          brew style --fix "Formula/$NAME.rb"
+          brew style "Formula/$NAME.rb"
+          brew fetch --formula "xminihub/tap/$NAME"
+          brew audit --formula --strict --online "xminihub/tap/$NAME"
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="bump/$NAME-$VERSION"
+          git checkout -b "$branch"
+          git add "Formula/$NAME.rb"
+          if git diff --cached --quiet; then
+            echo "Formula/$NAME.rb already pins $VERSION; nothing to open"
+            exit 0
+          fi
+          git commit -m "$NAME $VERSION"
+          git push --force-with-lease -u origin "$branch"
+          body="Rendered from the \`$VERSION\` release assets of \`$(jq -r .repo "tools/$NAME.json")\` and verified with \`brew style\`, \`brew fetch\` and \`brew audit --strict --online\`.
+
+          Bump run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          pr="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open \
+            --json number --jq '.[0].number // empty')"
+          if [ -n "$pr" ]; then
+            gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" \
+              --body "Re-rendered by run $GITHUB_RUN_ID."
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
+              --title "$NAME $VERSION" --body "$body"
+          fi

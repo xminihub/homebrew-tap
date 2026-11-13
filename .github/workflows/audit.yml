@@ -1,0 +1,58 @@
+name: Audit tap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Formula/**"
+      - "templates/**"
+      - "tools/**"
+      - "scripts/**"
+      - ".github/workflows/audit.yml"
+  pull_request:
+    paths:
+      - "Formula/**"
+      - "templates/**"
+      - "tools/**"
+      - "scripts/**"
+      - ".github/workflows/audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  HOMEBREW_NO_ANALYTICS: "1"
+
+jobs:
+  audit:
+    name: Style and audit every formula
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up tap for Homebrew
+        run: |
+          set -euo pipefail
+          taps="$(brew --repository)/Library/Taps/xminihub"
+          mkdir -p "$taps"
+          ln -sfn "$GITHUB_WORKSPACE" "$taps/homebrew-tap"
+          brew trust --tap xminihub/tap
+
+      - name: Audit formulae
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(Formula/*.rb)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no formulae in this tap yet"
+            exit 0
+          fi
+          names=()
+          for file in "${files[@]}"; do
+            brew style "$file"
+            names+=("xminihub/tap/$(basename "$file" .rb)")
+          done
+          brew audit --formula --strict --online "${names[@]}"

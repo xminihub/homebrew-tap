@@ -1,0 +1,91 @@
+name: Backfill formulae
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  plan:
+    name: Find formulae behind upstream releases
+    runs-on: ubuntu-latest
+    outputs:
+      tools: ${{ steps.plan.outputs.tools }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare upstream latest with the pinned version
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tools="[]"
+          for config in tools/*.json; do
+            name="$(jq -r '.name' "$config")"
+            repo="$(jq -r '.repo' "$config")"
+            latest="$(gh release view --repo "$repo" --json tagName \
+              --jq '.tagName | sub("^v"; "")')"
+            pinned="$(sed -n 's#.*/releases/download/v\([^/]*\)/.*#\1#p' \
+              "Formula/$name.rb" 2>/dev/null | head -1)"
+            echo "$name: upstream=$latest pinned=${pinned:-none}"
+            [ "$latest" = "$pinned" ] && continue
+            tools="$(jq -cn --argjson t "$tools" --arg n "$name" --arg v "$latest" \
+              '$t + [{name: $n, version: $v}]')"
+          done
+          echo "tools=$(printf '%s' "$tools" | jq -c .)" >> "$GITHUB_OUTPUT"
+
+  bump:
+    name: Bump ${{ matrix.name }} to ${{ matrix.version }}
+    needs: plan
+    if: needs.plan.outputs.tools != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.tools) }}
+    uses: ./.github/workflows/bump.yml
+    with:
+      name: ${{ matrix.name }}
+      version: ${{ matrix.version }}
+
+  report:
+    name: Report tools the backfill could not converge
+    needs: [plan, bump]
+    if: needs.plan.outputs.tools != '[]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Open or update an issue when no bump PR covers the tool
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOLS: ${{ needs.plan.outputs.tools }}
+        run: |
+          set -euo pipefail
+          for entry in $(printf '%s' "$TOOLS" | jq -c '.[]'); do
+            name="$(printf '%s' "$entry" | jq -r '.name')"
+            version="$(printf '%s' "$entry" | jq -r '.version')"
+            pr_count="$(gh pr list --repo "$GITHUB_REPOSITORY" \
+              --head "bump/$name-$version" --state open --json number \
+              --jq 'length')"
+            if [ "$pr_count" != "0" ]; then
+              echo "$name $version is waiting for review in a bump PR"
+              continue
+            fi
+            title="$name formula is stuck behind $version"
+            existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+              --label stale-formula --search "$title in:title" --json number \
+              --jq '.[0].number // empty')"
+            body="The backfill found \`tools/$name.json\` behind the latest release of \`$(jq -r .repo "tools/$name.json")\` ($version) and could not open a bump PR. Re-run \`.github/workflows/bump.yml\` with \`name=$name\`, \`version=$version\` once the release assets exist."
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
+                --body "$body" --label stale-formula
+            fi
+          done
