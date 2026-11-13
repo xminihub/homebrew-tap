@@ -61,7 +61,9 @@ jobs:
   report:
     name: Report formulae still behind upstream
     needs: [plan, bump]
-    if: needs.plan.outputs.tools != '[]'
+    # Runs even when a bump failed: a failed bump is exactly the case that has
+    # to leave a trace other than a red scheduled run.
+    if: always() && needs.plan.outputs.tools != '[]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
