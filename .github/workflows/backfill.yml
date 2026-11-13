@@ -8,7 +8,6 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
 
 jobs:
   plan:
@@ -54,14 +53,14 @@ jobs:
       version: ${{ matrix.version }}
 
   report:
-    name: Report tools the backfill could not converge
+    name: Report formulae still behind upstream
     needs: [plan, bump]
     if: needs.plan.outputs.tools != '[]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Open or update an issue when no bump PR covers the tool
+      - name: File or refresh a stale-formula issue per unconverged tool
         env:
           GH_TOKEN: ${{ github.token }}
           TOOLS: ${{ needs.plan.outputs.tools }}
@@ -70,18 +69,18 @@ jobs:
           for entry in $(printf '%s' "$TOOLS" | jq -c '.[]'); do
             name="$(printf '%s' "$entry" | jq -r '.name')"
             version="$(printf '%s' "$entry" | jq -r '.version')"
-            pr_count="$(gh pr list --repo "$GITHUB_REPOSITORY" \
-              --head "bump/$name-$version" --state open --json number \
-              --jq 'length')"
-            if [ "$pr_count" != "0" ]; then
-              echo "$name $version is waiting for review in a bump PR"
+            repo="$(jq -r '.repo' "tools/$name.json")"
+            pinned="$(sed -n 's#.*/releases/download/v\([^/]*\)/.*#\1#p' \
+              "Formula/$name.rb" 2>/dev/null | head -1)"
+            if [ "$pinned" = "$version" ]; then
+              echo "$name converged on $version"
               continue
             fi
             title="$name formula is stuck behind $version"
+            body="The backfill dispatched a bump of \`$name\` to \`$version\` (latest release of \`$repo\`) and \`Formula/$name.rb\` still pins \`${pinned:-nothing}\`. The bump run failed or its gates rejected the assets — check the bump workflow run for \`$name\` and re-run it once the release assets exist."
             existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
-              --label stale-formula --search "$title in:title" --json number \
-              --jq '.[0].number // empty')"
-            body="The backfill found \`tools/$name.json\` behind the latest release of \`$(jq -r .repo "tools/$name.json")\` ($version) and could not open a bump PR. Re-run \`.github/workflows/bump.yml\` with \`name=$name\`, \`version=$version\` once the release assets exist."
+              --label stale-formula --search "$name formula is stuck in:title" \
+              --json number --jq '.[0].number // empty')"
             if [ -n "$existing" ]; then
               gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
             else

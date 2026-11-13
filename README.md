@@ -37,17 +37,20 @@ that workflow:
 3. renders `Formula/<name>.rb` from `templates/<name>.rb.tpl`,
 4. verifies it with `brew style`, `brew fetch` and `brew audit --strict
    --online`,
-5. opens (or refreshes) a pull request titled `<name> <version>`.
+5. commits `Formula/<name>.rb` to `main`, rebasing over any formula that was
+   pushed in the meantime.
 
-A product release waits for that run and fails if it fails, so a stale formula
-is never the silent outcome of a green release. Merging the PR is the only
-manual step: it keeps `brew audit --online` (which fails on a version upstream
-has already moved past) as a review gate instead of a race.
+A product release waits for that run and fails if it fails, so a green release
+always means an installable formula. Nothing waits on a human review: a review
+between a release and its formula is a window of stale installs, which is the
+exact failure this tap replaces. If upstream moved on while the bump was
+running, `brew audit --online` may accept a pin that is already behind; the
+daily backfill converges that and files a `stale-formula` issue if it cannot.
 
 [`backfill.yml`](.github/workflows/backfill.yml) runs daily, compares every
-`tools/*.json` against the latest upstream release, and dispatches the same
-bump for anything behind — which also catches a release whose trigger never
-fired. If it cannot converge, it opens a `stale-formula` issue.
+`tools/*.json` against the latest upstream release and bumps anything behind
+through the same workflow — which also catches a release whose trigger never
+fired. Anything still behind afterwards gets a `stale-formula` issue.
 
 ## Adding a tool
 
@@ -55,11 +58,12 @@ fired. If it cannot converge, it opens a `stale-formula` issue.
    license and the brew targets it publishes tarball assets for.
 2. `templates/<name>.rb.tpl` — the Ruby, with `{{BLOCKS}}` where the per-target
    `url`/`sha256` blocks go.
-3. Run `bump.yml` once by hand with the current version and merge the PR.
+3. Run `bump.yml` once by hand with the current version to seed the formula.
 4. In the product's release workflow, dispatch `bump.yml` with
    `name=<name>`/`version=<version>` and poll the run to its conclusion. That
-   needs a fine-grained PAT with Actions read/write on this repository only
-   (`TAP_TRIGGER_TOKEN`, stored at org level) — never contents write.
+   needs a fine-grained PAT with Actions write on this repository only
+   (`TAP_TRIGGER_TOKEN`, stored as an org secret) — never contents write, since
+   the tap commits to itself with its own token.
 
 Target and asset naming (`<bin>-<version>-<target>.tar.gz`) is the contract
 between a product's release and its formula; `bump.yml` refuses to render when
@@ -68,5 +72,5 @@ an expected asset is missing.
 ## Repairing a formula
 
 Re-run `bump.yml` for the same name and version. It re-downloads, re-checksums
-and rewrites the formula, then force-updates its own PR — no hand edits, and no
-need for a new product release just to correct a checksum.
+and rewrites the whole formula, so it converges from any state — no hand edits,
+and no need for a new product release just to correct a checksum.

@@ -23,7 +23,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: bump-${{ inputs.name }}
@@ -105,33 +104,30 @@ jobs:
           brew fetch --formula "xminihub/tap/$NAME"
           brew audit --formula --strict --online "xminihub/tap/$NAME"
 
-      - name: Open pull request
+      - name: Commit the formula
         env:
-          GH_TOKEN: ${{ github.token }}
           NAME: ${{ inputs.name }}
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          branch="bump/$NAME-$VERSION"
-          git checkout -b "$branch"
           git add "Formula/$NAME.rb"
           if git diff --cached --quiet; then
-            echo "Formula/$NAME.rb already pins $VERSION; nothing to open"
+            echo "Formula/$NAME.rb already pins $VERSION; nothing to push"
             exit 0
           fi
           git commit -m "$NAME $VERSION"
-          git push --force-with-lease -u origin "$branch"
-          body="Rendered from the \`$VERSION\` release assets of \`$(jq -r .repo "tools/$NAME.json")\` and verified with \`brew style\`, \`brew fetch\` and \`brew audit --strict --online\`.
-
-          Bump run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          pr="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open \
-            --json number --jq '.[0].number // empty')"
-          if [ -n "$pr" ]; then
-            gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" \
-              --body "Re-rendered by run $GITHUB_RUN_ID."
-          else
-            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
-              --title "$NAME $VERSION" --body "$body"
-          fi
+          # Two tools releasing at once both push to main: rebase over the
+          # other formula rather than losing its commit.
+          for attempt in 1 2 3 4 5; do
+            if git push origin "HEAD:main"; then
+              echo "Formula/$NAME.rb pinned $VERSION on attempt $attempt"
+              exit 0
+            fi
+            git fetch origin main
+            git rebase origin/main
+            sleep "$((attempt * 3))"
+          done
+          echo "::error::could not push Formula/$NAME.rb after 5 attempts"
+          exit 1
