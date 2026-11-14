@@ -63,7 +63,7 @@ const lines = (target, indent) => {
 
 const GROUPS = [
   { dir: "on_macos", arm: "darwin-arm64", x86: "darwin-x64" },
-  { dir: "on_linux", arm: "linux-aarch64", x86: "linux-x64" },
+  { dir: "on_linux", arm: "linux-arm64", x86: "linux-x64" },
 ];
 
 const blocks = GROUPS.map((group) => {
