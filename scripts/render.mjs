@@ -24,9 +24,49 @@ if (!command || !name || !version) {
 const tool = JSON.parse(readFileSync(`tools/${name}.json`, "utf8"));
 const assetName = (target) => `${tool.bin}-${version}-${target}.tar.gz`;
 
+// A brew target is an npm-convention `<os>-<cpu>` name (ADR-0001): the os half
+// picks the formula block, the cpu half the Hardware::CPU branch inside it.
+// Both are read out of tools/<name>.json rather than mirrored here, because a
+// second copy of the vocabulary is how linux/arm64 went missing from a formula
+// while this file still spelled it `aarch64`. A target that maps to no branch
+// fails the bump instead of being dropped: omitting its url block would hand
+// those users the other architecture's binary.
+const BLOCKS = [
+  { dir: "on_macos", os: "darwin" },
+  { dir: "on_linux", os: "linux" },
+];
+const BRANCHES = { arm64: "arm", x64: "x86" };
+const RENDERABLE = BLOCKS.flatMap(({ os }) =>
+  Object.keys(BRANCHES).map((cpu) => `${os}-${cpu}`),
+);
+
+const plan = tool.brewTargets.map((target) => {
+  const [os, cpu] = target.split("-");
+  const dir = BLOCKS.find((block) => block.os === os)?.dir;
+  const branch = BRANCHES[cpu];
+  if (!dir || !branch) {
+    throw new Error(
+      `tools/${name}.json declares brew target ${target}, which this tap cannot ` +
+        `render; expected one of ${RENDERABLE.join(", ")}`,
+    );
+  }
+  return { dir, branch, target };
+});
+
+const claimed = new Set();
+for (const { dir, branch, target } of plan) {
+  const slot = `${dir} ${branch}`;
+  if (claimed.has(slot)) {
+    throw new Error(
+      `tools/${name}.json declares more than one brew target for ${slot}`,
+    );
+  }
+  claimed.add(slot);
+}
+
 if (command === "assets") {
   const map = {};
-  for (const target of tool.brewTargets) {
+  for (const { target } of plan) {
     map[target] = assetName(target);
   }
   console.log(JSON.stringify(map));
@@ -61,15 +101,11 @@ const lines = (target, indent) => {
   return [`${pad}url "${urlFor(target)}"`, `${pad}sha256 "${shaFor(target)}"`];
 };
 
-const GROUPS = [
-  { dir: "on_macos", arm: "darwin-arm64", x86: "darwin-x64" },
-  { dir: "on_linux", arm: "linux-arm64", x86: "linux-x64" },
-];
-
-const blocks = GROUPS.map((group) => {
-  const arm = tool.brewTargets.includes(group.arm) ? group.arm : null;
-  const x86 = tool.brewTargets.includes(group.x86) ? group.x86 : null;
-  if (!arm && !x86) return null;
+const blocks = BLOCKS.map(({ dir }) => {
+  const entries = plan.filter((entry) => entry.dir === dir);
+  if (entries.length === 0) return null;
+  const arm = entries.find((entry) => entry.branch === "arm")?.target;
+  const x86 = entries.find((entry) => entry.branch === "x86")?.target;
 
   const inner = [];
   if (arm && x86) {
@@ -78,14 +114,14 @@ const blocks = GROUPS.map((group) => {
   } else {
     inner.push(...lines(arm ?? x86, 4));
   }
-  return `  ${group.dir} do\n${inner.join("\n")}\n  end`;
+  return `  ${dir} do\n${inner.join("\n")}\n  end`;
 })
   .filter(Boolean)
   .join("\n\n");
 
 if (!blocks) {
   throw new Error(
-    `tools/${name}.json declares no brew target in ${GROUPS.flatMap((g) => [g.arm, g.x86]).join(", ")}`,
+    `tools/${name}.json declares no brew target in ${RENDERABLE.join(", ")}`,
   );
 }
 
