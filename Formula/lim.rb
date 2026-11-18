@@ -10,21 +10,21 @@ class Lim < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/xminihub/limulin/releases/download/v0.4.4/lim-0.4.4-darwin-arm64.tar.gz"
-      sha256 "09e19178feb3fe4ba4b3703b1516686872a60ecdb733650abf54ac51ad429189"
+      url "https://github.com/xminihub/limulin/releases/download/v0.4.5/lim-0.4.5-darwin-arm64.tar.gz"
+      sha256 "f4cc5cb4b880806ed30cebfcdbb7d373b72bc883c11123f2eee1f9cdaf3b790e"
     else
-      url "https://github.com/xminihub/limulin/releases/download/v0.4.4/lim-0.4.4-darwin-x64.tar.gz"
-      sha256 "cfa667728e15d4674f707e3567b3a2809b77b88b5f0c108e095051304f7ffe4f"
+      url "https://github.com/xminihub/limulin/releases/download/v0.4.5/lim-0.4.5-darwin-x64.tar.gz"
+      sha256 "b126b19b8199589b705a2bdecad5980b64c977ae4e2deea05fff3dd85d00128b"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/xminihub/limulin/releases/download/v0.4.4/lim-0.4.4-linux-arm64.tar.gz"
-      sha256 "b2fb645fffc5acad932bcab2301217ecff672f93adfbaaf6f7ed64856ae6107e"
+      url "https://github.com/xminihub/limulin/releases/download/v0.4.5/lim-0.4.5-linux-arm64.tar.gz"
+      sha256 "7c25ac16fae5f154efd20ce729947099fd13bf2b26cdee9fee93012e2d097d3a"
     else
-      url "https://github.com/xminihub/limulin/releases/download/v0.4.4/lim-0.4.4-linux-x64.tar.gz"
-      sha256 "bedf41aba7947377b1b4852f39fa906ac06ab3e98f1257cc105f2af8d925dd46"
+      url "https://github.com/xminihub/limulin/releases/download/v0.4.5/lim-0.4.5-linux-x64.tar.gz"
+      sha256 "640110b4a40f02af602d675ca9bc6f0a3a59da905a31cbcea6f5669f66bbf73d"
     end
   end
 
