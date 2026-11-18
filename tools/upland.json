@@ -1,0 +1,10 @@
+{
+  "name": "upland",
+  "class": "Upland",
+  "repo": "xminihub/upland",
+  "bin": "upland",
+  "desc": "HTTP API server with an embedded web UI",
+  "homepage": "https://github.com/xminihub/upland",
+  "license": "MIT",
+  "brewTargets": ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"]
+}
