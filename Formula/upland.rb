@@ -10,21 +10,21 @@ class Upland < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/xminihub/upland/releases/download/v0.1.8/upland-0.1.8-darwin-arm64.tar.gz"
-      sha256 "e276954b6e826057f0d2c392905aa39f91821eac88f5948a2a9c8a380f445c1d"
+      url "https://github.com/xminihub/upland/releases/download/v0.1.9/upland-0.1.9-darwin-arm64.tar.gz"
+      sha256 "31b96777a3fed6dfce824c0da2ba2a4358d522d653a19fafab999c36b6feddbb"
     else
-      url "https://github.com/xminihub/upland/releases/download/v0.1.8/upland-0.1.8-darwin-x64.tar.gz"
-      sha256 "82d0d186baed001c1badaf0cb2ee2ff1bc75e60993849624d46e05edc3f3ef4f"
+      url "https://github.com/xminihub/upland/releases/download/v0.1.9/upland-0.1.9-darwin-x64.tar.gz"
+      sha256 "48d76a54ae1193f8ee1d55333893d3341a918720f8e7926dd99a674465832cbf"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/xminihub/upland/releases/download/v0.1.8/upland-0.1.8-linux-arm64.tar.gz"
-      sha256 "e6626f2293403ebb9ac35cb6174ceb711110be7e29abdfe037dc647a6b73a124"
+      url "https://github.com/xminihub/upland/releases/download/v0.1.9/upland-0.1.9-linux-arm64.tar.gz"
+      sha256 "1de38f599193002f6e7a34ece95e4ac6c85c5e690f6737ba41eb446e574540d9"
     else
-      url "https://github.com/xminihub/upland/releases/download/v0.1.8/upland-0.1.8-linux-x64.tar.gz"
-      sha256 "0f96c1d4a4ec96787ca6a3f181aa98850d849b2c443cf844facb62648dafa935"
+      url "https://github.com/xminihub/upland/releases/download/v0.1.9/upland-0.1.9-linux-x64.tar.gz"
+      sha256 "223575100e7a5a664803cd2e207b27d3d163b78aa9c58b3b7da3bbe377835b42"
     end
   end
 
